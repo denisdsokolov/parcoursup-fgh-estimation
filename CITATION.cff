@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata in this file."
+type: software
+title: "Parcoursup FGH estimation"
+authors:
+  - family-names: Sokolov
+    given-names: Denis
+repository-code: "https://github.com/denisdsokolov/parcoursup-fgh-estimation"
+version: 0.1.0
+date-released: 2026-08-10
