@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from preference_features import log_count
 
 def build_panel(students, wishes, resident, matches, keep_set, outside_only_students_share):
     """Return long panelresticted to programmes in keep_set"""
@@ -160,8 +161,8 @@ def build_panel_fgh(students, programs, wishes, resident, matches, ranks, keep_s
     panel["bShare_near"] = (panel["b_share"] / 100.0) * panel["near_is"]
     panel["bShare_sch"] = (panel["b_share"] / 100.0) * panel["b_trait"]
     panel["rShare_near"] = (panel["r_share"] / 100.0) * panel["near_is"]
-    panel["bOnly_bOnlyWish"] = panel["b_only_type"] * (panel["b_only_wishes_count"] / 10.0)
-    panel["br_brWishRes"] = panel["br_type"] * (panel["br_wishes_resident_count"] / 10.0)
+    panel["bOnly_bOnlyWish"] = panel["b_only_type"] * log_count(panel["b_only_wishes_count"])
+    panel["br_brWishRes"] = panel["br_type"] * log_count(panel["br_wishes_resident_count"])
     panel["logQuota_nat"] = np.log(panel["quota"]) * panel["is_french"]
     panel["logQuota_near"] = np.log(panel["quota"]) * panel["near_is"]
     panel["logQuota_sex"] = np.log(panel["quota"]) * panel["sex"]

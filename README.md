@@ -1,32 +1,47 @@
-# Parcoursup FGH estimation
+# Stable choice with overlapping constraints: Parcoursup replication code
 
 [![CI](https://github.com/denisdsokolov/parcoursup-fgh-estimation/actions/workflows/ci.yml/badge.svg)](https://github.com/denisdsokolov/parcoursup-fgh-estimation/actions/workflows/ci.yml)
 
-Research code for estimating student preferences and comparing matching mechanisms on the
-French Parcoursup higher-education admissions market. The pipeline prepares restricted-access
-administrative data, estimates an FGH discrete-choice model, simulates ranked-order lists, and
-compares Parcoursup's call-order mechanism (PCS/CDA) with SF-CDA in counterfactual markets.
+Research code accompanying Denis Sokolov, *Stable Choice with Overlapping Distributional
+Constraints: An Anchor Characterization and an Application to Parcoursup*. It estimates
+applicant preferences from restricted Parcoursup records and compares the current fixed
+call-order mechanism (PCS) with Stage-Fair College-Proposing Deferred Acceptance (SF-CDA).
 
-## What is included
+The paper studies a capacity-constrained choice problem with two overlapping traits and
+one-to-all accounting. A candidate with both traits counts toward both targets. Stable choices
+are indexed by the lowest-priority selected dual-trait candidate (the **anchor**); SF-CDA uses
+the highest-priority stable anchor, `k_left`, on the residual newcomer problem at each stage.
 
-- `FGH_data_proc.py` — transforms raw annual Parcoursup extracts into analysis tables.
-- `FGH_main.py` — runs estimation, preference simulation, matching, and final analysis.
-- `cda_mechanisms.py` — program-proposing CDA and SF-CDA implementations.
-- `panel_builder.py`, `estimate_fgh.py`, `alpha_ols.py` — FGH estimation pipeline.
-- `simulate_rols.py`, `pref_profile_sampling.py` — preference-list simulation.
-- `results/` — aggregate simulation outputs and residency histograms.
-- `legacy/` — earlier monolithic implementations retained for reference.
+## Main empirical result
 
-Raw and processed individual-level data are deliberately excluded from the repository.
-See [docs/DATA.md](docs/DATA.md) for the expected files and privacy boundaries.
+In 1,000 paired simulations on the 2024 market, SF-CDA reduces the number of candidates with
+justified envy from 174,801 under PCS to 1,028 on average. Scholarship-target compliance rises
+from 68.21% to 87.84%, while total assignments change from 510,722 to 510,994. These are
+model-based policy comparisons, not causal estimates. The manuscript values for 2022–2024 are
+in [`results/paper/mechanism_comparison.csv`](results/paper/mechanism_comparison.csv).
 
-## Requirements
+Read [`docs/PAPER.md`](docs/PAPER.md) for the paper summary and
+[`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) for the claim-by-claim code audit.
 
-- Python 3.10–3.12 (Python 3.12 is used in CI)
-- Enough memory for the full administrative extracts; the annual market contains roughly
-  880,000 candidates and 21,000 programs.
+## Repository map
 
-Create an isolated environment and install the dependencies:
+- `FGH_data_proc.py` — transforms restricted annual Parcoursup extracts.
+- `panel_builder.py`, `estimate_fgh.py`, `alpha_ols.py` — eligibility set, multinomial-logit
+  estimation, and alternative-specific-constant imputation.
+- `simulate_rols.py`, `pref_profile_sampling.py` — simulated preference profiles.
+- `cda_mechanisms.py` — PCS, SF-CDA, target compliance, and justified-envy calculations.
+- `paper_reporting.py` — paired means, Monte Carlo standard errors, and significance tests.
+- `FGH_main.py` — end-to-end orchestration; its paper default is 1,000 markets.
+- `results/paper/` — manuscript values transcribed from the paper.
+- `results/simulations/` — retained development-run aggregates, not exact table replications.
+- `legacy/` — superseded scripts retained only for provenance.
+
+Raw and processed individual-level data are deliberately excluded. See
+[`docs/DATA.md`](docs/DATA.md) for expected inputs and privacy boundaries.
+
+## Installation
+
+Python 3.10–3.12 is supported (CI uses 3.12):
 
 ```bash
 python3.12 -m venv .venv
@@ -35,66 +50,46 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-An existing Conda environment with the same Python version can be used instead.
+## Configuration and execution
 
-## Configuration
-
-Copy `.env.example` as a reference and export the variables you want to override. The scripts
-do not load `.env` automatically, so configuration remains explicit in the shell:
+The scripts read explicit environment variables; `.env` files are not loaded automatically.
+Defaults in `.env.example` reproduce the 2024 paper setup of 10 candidates per bunch and 100
+bunches, hence 1,000 paired markets.
 
 ```bash
 export PARCOURSUP_YEAR=24
 export PARCOURSUP_DATA_DIR=FGH_data_Yc_Yq
 export PARCOURSUP_BUNCH_SIZE=10
-export PARCOURSUP_BUNCHES=50
+export PARCOURSUP_BUNCHES=100
 export PARCOURSUP_SEED=2024
-```
 
-Defaults match the current 2024 experiment. Boolean values accept `true`/`false`, `yes`/`no`,
-`on`/`off`, or `1`/`0`.
-
-## Running the pipeline
-
-Place the restricted raw inputs outside version control, then preprocess them:
-
-```bash
 python FGH_data_proc.py
-```
-
-After the six processed tables and the required coefficient files are available in
-`PARCOURSUP_DATA_DIR`, run the simulations:
-
-```bash
 python FGH_main.py
 ```
 
-For a small smoke run, reduce the number of markets without editing the source:
+For a small one-market run with the required processed inputs:
 
 ```bash
 PARCOURSUP_BUNCH_SIZE=1 PARCOURSUP_BUNCHES=1 python FGH_main.py
 ```
 
-The simulation seed is derived from `PARCOURSUP_SEED` and the market index, so repeated runs
-with the same inputs and configuration reproduce the same preference draws.
+Exact end-to-end replication additionally requires the restricted administrative extracts,
+the sampled program IDs, and the estimated `alpha_hat.csv` and `beta_hat.csv`; these cannot be
+published here. With identical inputs and seed, each simulated preference draw is shared by
+PCS and SF-CDA.
 
 ## Tests
 
-The unit tests use synthetic data and do not require Parcoursup extracts:
+The tests use synthetic data, including Example 2 from the paper:
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-GitHub Actions compiles the source tree and runs these tests on every push and pull request.
-
-## Research outputs
-
-Aggregate results are stored in `results/simulations/`; residency matrices and figures are in
-`results/resident_histograms/`. Their data dictionaries are kept next to the files.
+GitHub Actions compiles the source and runs the tests on every push and pull request.
 
 ## License
 
-No open-source license has been selected. The code remains under the author's copyright unless
-a license is added later; the Parcoursup source data are governed separately by their access
-terms.
+No open-source license has been selected. The code remains under the author's copyright; the
+Parcoursup source data are governed separately by their access terms.

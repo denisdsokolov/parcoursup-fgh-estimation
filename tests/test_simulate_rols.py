@@ -74,3 +74,16 @@ def test_simulated_rankings_are_reproducible_and_saved_once(tmp_path):
 def test_simulated_rankings_require_a_positive_draw_count():
     with pytest.raises(ValueError, match="R must be at least 1"):
         simulate_ranked_lists(0, *_inputs())
+
+
+def test_simulator_applies_an_optional_annual_interaction():
+    inputs = list(_inputs())
+    beta_hat = inputs[-1]
+    inputs[-1] = pd.concat(
+        [beta_hat, pd.DataFrame({"name": ["br_near"], "coef": [100.0]})],
+        ignore_index=True,
+    )
+
+    simulated = simulate_ranked_lists(1, *inputs, seed=123)
+
+    assert simulated[0][0][0] == 10

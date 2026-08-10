@@ -18,7 +18,9 @@ def students_proposed(
 
     • CDA: take up to the current deficit best *never‑proposed*.
     • SF‑CDA: enforce target shares with the anchor/reshuffle/greedy procedure
-      described by the user. Targets are computed per program from
+      in the paper. The first anchor that fills capacity and both residual
+      targets is the highest-priority stable anchor, ``k_left``. Targets are
+      computed per program from
       'b_share' and 'r_share' in `programs` (percentages), each contributing
       ceil(share * quota / 100) target seats. A student with both traits counts
       toward **both** targets when tentatively admitted.
@@ -182,7 +184,8 @@ def students_proposed(
         if (q_def - len(subset) == 0) and (max(0, qb_def - add_b) == 0) and (max(0, qr_def - add_r) == 0):
             return subset
 
-    # --- Then consider actual both‑trait anchors in order ---
+    # --- Then consider actual both‑trait anchors in priority order ---
+    # Returning the first stable one implements the paper's k_left choice.
     for k, anchor_idx in enumerate(both_positions):
         # Determine next both‑trait index (anchor2)
         next_idx = both_positions[k+1] if (k+1) < len(both_positions) else None

@@ -1,0 +1,21 @@
+year,term,estimate,se,significance,candidates,programs,strata
+2024,Resident,1.79,0.52,***,28312,197,88
+2024,Scholarship holder x b-only kind,0.38,0.14,**,28312,197,88
+2024,log(number b-only wishes) x b-only kind,-0.05,0.08,,28312,197,88
+2024,log(number b-and-r wishes if resident) x b-and-r kind,-0.63,0.16,***,28312,197,88
+2024,French x log quota,0.19,0.05,***,28312,197,88
+2024,Resident x log quota,0.62,0.10,***,28312,197,88
+2024,Female x log quota,0.09,0.03,**,28312,197,88
+2024,Scholarship holder x log quota,0.13,0.05,**,28312,197,88
+2022,Resident,1.44,0.91,,29989,176,86
+2022,Resident x French,-0.31,0.17,,29989,176,86
+2022,Resident x scholarship target share,-7.31,4.44,,29989,176,86
+2022,log(number b-and-r wishes if resident) x b-and-r kind,-0.73,0.15,***,29989,176,86
+2022,French x log quota,0.16,0.05,**,29989,176,86
+2022,Resident x log quota,0.25,0.12,*,29989,176,86
+2022,Female x log quota,0.05,0.03,*,29989,176,86
+2023,Resident,1.65,0.52,**,29507,194,86
+2023,Resident x b-and-r kind,-1.86,0.66,**,29507,194,86
+2023,Resident x French,-0.28,0.18,,29507,194,86
+2023,Resident x scholarship target share,1.84,0.56,**,29507,194,86
+2023,French x log quota,0.19,0.07,**,29507,194,86

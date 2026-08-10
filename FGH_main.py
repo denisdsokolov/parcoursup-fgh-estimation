@@ -4,6 +4,7 @@ import load_tables, sampling, panel_builder, estimate_fgh, alpha_ols, simulate_r
 import pandas as pd
 import numpy as np
 from project_config import env_bool, env_int, env_path
+from paper_reporting import summarize_paired_results
 
 gc.collect() # frees up memory
 
@@ -31,7 +32,7 @@ use_ROLs = env_bool("PARCOURSUP_USE_ROLS", False) # Do we want to use heavy ROLs
 load_ROLs = env_bool("PARCOURSUP_LOAD_ROLS", True) # True is ROLs of students are already constructed and saved
 
 bunch_size = env_int("PARCOURSUP_BUNCH_SIZE", 10, minimum=1) # how many markets in one bunch
-bunches_number = env_int("PARCOURSUP_BUNCHES", 50, minimum=1) # number of bunches
+bunches_number = env_int("PARCOURSUP_BUNCHES", 100, minimum=1) # number of bunches (1,000 markets in the 2024 paper exercise)
 markets_number = bunch_size*bunches_number # how many simulated markets
 simulation_seed = env_int("PARCOURSUP_SEED", 2024, minimum=0)
 result_year = env_int("PARCOURSUP_RESULT_YEAR", 2024, minimum=2000)
@@ -289,7 +290,7 @@ if use_ROLs:
 
 alpha_hat = pd.read_csv(DATADIR.parent/f"{DATADIR.name}/alpha_hat.csv")
 beta_hat = pd.read_csv(DATADIR.parent/f"{DATADIR.name}/beta_hat.csv")
-SimulationsData2024 = pd.DataFrame(columns=['PCS_matched_studs_amount', 'SF_matched_studs_amount',
+simulations_data = pd.DataFrame(columns=['PCS_matched_studs_amount', 'SF_matched_studs_amount',
                                             'PCS_matched_b_studs_amount', 'SF_matched_b_studs_amount',
                                             'PCS_je_studs_amount', 'SF_je_studs_amount',
                                             'PCS_je_b_studs_amount', 'SF_je_b_studs_amount',
@@ -376,112 +377,21 @@ for bc in range(bunches_number):
                 SF_only_matched_b, PCS_only_matched_b,
                 SF_avg_rank_impr, PCS_avg_rank_impr,
                 SF_avg_rank_impr_b, PCS_avg_rank_impr_b]
-        SimulationsData2024.loc[len(SimulationsData2024)] = res
+        simulations_data.loc[len(simulations_data)] = res
 
-        #print(SimulationsData2024.iloc[[mk]])
+        #print(simulations_data.iloc[[mk]])
 
     # Saving resulting data for current bunch
     filename = f"SimulationsData{result_year}_{bc}.csv"
-    SimulationsData2024.to_csv(p/filename, index=False)
+    simulations_data.to_csv(p/filename, index=False)
     print(f"Bunch {bc+1} with {bunch_size} markets ({bc*bunch_size+1}:{(bc+1)*bunch_size}) is saved!")
 
 filename = f"SimulationsData{result_year}_{bc}.csv"
-SimulationsData2024 = pd.read_csv(p/filename)
+simulations_data = pd.read_csv(p/filename)
 
 if final_analysis:
-    # Adding column with SF - PCS differences and checking whether their means are different from 0
-    from scipy.stats import ttest_1samp
-    SimulationsData2024['NET_matched_studs_amount'] = SimulationsData2024['SF_matched_studs_amount'] - SimulationsData2024['PCS_matched_studs_amount']
-    sample = SimulationsData2024['NET_matched_studs_amount'].dropna()
-    t_stat, p_matched_studs_amount = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_matched_b_studs_amount'] = SimulationsData2024['SF_matched_b_studs_amount'] - SimulationsData2024['PCS_matched_b_studs_amount']
-    sample = SimulationsData2024['NET_matched_b_studs_amount'].dropna()
-    t_stat, p_matched_b_studs_amount = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_je_studs_amount'] = SimulationsData2024['SF_je_studs_amount'] - SimulationsData2024['PCS_je_studs_amount']
-    sample = SimulationsData2024['NET_je_studs_amount'].dropna()
-    t_stat, p_je_studs_amount = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_je_b_studs_amount'] = SimulationsData2024['SF_je_b_studs_amount'] - SimulationsData2024['PCS_je_b_studs_amount']
-    sample = SimulationsData2024['NET_je_b_studs_amount'].dropna()
-    t_stat, p_je_b_studs_amount = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_last_iter'] = SimulationsData2024['SF_last_iter'] - SimulationsData2024['PCS_last_iter']
-    sample = SimulationsData2024['NET_last_iter'].dropna()
-    t_stat, p_last_iter = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_99_iter'] = SimulationsData2024['SF_99_iter'] - SimulationsData2024['PCS_99_iter']
-    sample = SimulationsData2024['NET_99_iter'].dropna()
-    t_stat, p_99_iter = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_95_iter'] = SimulationsData2024['SF_95_iter'] - SimulationsData2024['PCS_95_iter']
-    sample = SimulationsData2024['NET_95_iter'].dropna()
-    t_stat, p_95_iter = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_avg_b'] = SimulationsData2024['SF_avg_b'] - SimulationsData2024['PCS_avg_b']
-    sample = SimulationsData2024['NET_avg_b'].dropna()
-    t_stat, p_avg_b = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_avg_r'] = SimulationsData2024['SF_avg_r'] - SimulationsData2024['PCS_avg_r']
-    sample = SimulationsData2024['NET_avg_r'].dropna()
-    t_stat, p_avg_r = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_total_b'] = SimulationsData2024['SF_total_b'] - SimulationsData2024['PCS_total_b']
-    sample = SimulationsData2024['NET_total_b'].dropna()
-    t_stat, p_total_b = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_total_r'] = SimulationsData2024['SF_total_r'] - SimulationsData2024['PCS_total_r']
-    sample = SimulationsData2024['NET_total_r'].dropna()
-    t_stat, p_total_r = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_stu_pref'] = SimulationsData2024['SF_stu_pref'] - SimulationsData2024['PCS_stu_pref']
-    sample = SimulationsData2024['NET_stu_pref'].dropna()
-    t_stat, p_stu_pref = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_b_stu_pref'] = SimulationsData2024['SF_b_stu_pref'] - SimulationsData2024['PCS_b_stu_pref']
-    sample = SimulationsData2024['NET_b_stu_pref'].dropna()
-    t_stat, p_b_stu_pref = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_only_matched'] = SimulationsData2024['SF_only_matched'] - SimulationsData2024['PCS_only_matched']
-    sample = SimulationsData2024['NET_only_matched'].dropna()
-    t_stat, p_only_matched = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_only_matched_b'] = SimulationsData2024['SF_only_matched_b'] - SimulationsData2024['PCS_only_matched_b']
-    sample = SimulationsData2024['NET_only_matched_b'].dropna()
-    t_stat, p_only_matched_b = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_avg_rank_impr'] = SimulationsData2024['SF_avg_rank_impr'] - SimulationsData2024['PCS_avg_rank_impr']
-    sample = SimulationsData2024['NET_avg_rank_impr'].dropna()
-    t_stat, p_avg_rank_impr = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    SimulationsData2024['NET_avg_rank_impr_b'] = SimulationsData2024['SF_avg_rank_impr_b'] - SimulationsData2024['PCS_avg_rank_impr_b']
-    sample = SimulationsData2024['NET_avg_rank_impr_b'].dropna()
-    t_stat, p_avg_rank_impr_b = ttest_1samp(sample, popmean = 0) # if p < 0.05 -> not 0
-
-    # Reordering columns
-    SimulationsData2024 = SimulationsData2024[['PCS_avg_b', 'SF_avg_b', 'NET_avg_b',
-                                            'PCS_avg_r', 'SF_avg_r', 'NET_avg_r',
-                                            'PCS_total_b', 'SF_total_b', 'NET_total_b',
-                                            'PCS_total_r', 'SF_total_r', 'NET_total_r',
-                                            'PCS_je_studs_amount', 'SF_je_studs_amount', 'NET_je_studs_amount',
-                                            'PCS_je_b_studs_amount', 'SF_je_b_studs_amount', 'NET_je_b_studs_amount',
-                                            'PCS_matched_studs_amount', 'SF_matched_studs_amount', 'NET_matched_studs_amount',
-                                            'PCS_matched_b_studs_amount', 'SF_matched_b_studs_amount', 'NET_matched_b_studs_amount',
-                                            'PCS_last_iter', 'SF_last_iter', 'NET_last_iter',
-                                            'PCS_99_iter', 'SF_99_iter', 'NET_99_iter',
-                                            'PCS_95_iter', 'SF_95_iter', 'NET_95_iter',
-                                            'PCS_stu_pref', 'SF_stu_pref', 'NET_stu_pref',
-                                            'PCS_b_stu_pref', 'SF_b_stu_pref', 'NET_b_stu_pref',
-                                            'PCS_only_matched', 'SF_only_matched', 'NET_only_matched',
-                                            'PCS_only_matched_b', 'SF_only_matched_b', 'NET_only_matched_b',
-                                            'PCS_avg_rank_impr', 'SF_avg_rank_impr', 'NET_avg_rank_impr',
-                                            'PCS_avg_rank_impr_b', 'SF_avg_rank_impr_b', 'NET_avg_rank_impr_b']]
-
-
-    summary = pd.DataFrame({
-        'Mean': SimulationsData2024.mean(),
-        'Std': SimulationsData2024.std()
-    })
-
+    # Tables 5, D.9, and D.13 report draw means, Monte Carlo standard
+    # errors, and paired SF-CDA minus PCS tests.
+    summary = summarize_paired_results(simulations_data)
+    summary.to_csv(p/f"PaperSummary{result_year}.csv", index=False)
     print(summary)

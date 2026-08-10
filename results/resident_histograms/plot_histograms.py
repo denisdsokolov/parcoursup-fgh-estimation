@@ -1,3 +1,6 @@
+import argparse
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -22,9 +25,16 @@ def percent_formatter_int(x, pos):
 
 
 # ====================================================
-# Load your 20×18 matrix
+# Select and load an annual 20×18 matrix
 # ====================================================
-hist3d_data = np.loadtxt("hist3d_res_matrix_22.csv",
+parser = argparse.ArgumentParser(description="Render residency histograms for one Parcoursup year.")
+parser.add_argument("--year", choices=("22", "23", "24"), default="22")
+parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+args = parser.parse_args()
+
+source_dir = Path(__file__).resolve().parent
+args.output_dir.mkdir(parents=True, exist_ok=True)
+hist3d_data = np.loadtxt(source_dir / f"hist3d_res_matrix_{args.year}.csv",
                          delimiter=",", dtype=int)
 hist3d_data = np.delete(hist3d_data, 0, axis=0)  # drop first row
 
@@ -189,7 +199,7 @@ for elev, azim, name in angles:
     # Ensure visibility
     cbar.ax.tick_params(labelsize=10, colors="black")
 
-    filename = f"hist3d_{name}.pdf"
+    filename = args.output_dir / f"hist3d_{name}_{args.year}.pdf"
     plt.savefig(filename, format="pdf", bbox_inches="tight")
     plt.close()
 
@@ -229,9 +239,10 @@ for tick in ax.yaxis.get_major_ticks():
     tick.label1.set_fontsize(8)
 
 plt.tight_layout()
-plt.savefig("hist_marginal_share_residents.pdf", format="pdf", bbox_inches="tight")
+share_output = args.output_dir / f"hist_marginal_share_residents_{args.year}.pdf"
+plt.savefig(share_output, format="pdf", bbox_inches="tight")
 plt.close()
-print("Saved 2D: hist_marginal_share_residents.pdf")
+print("Saved 2D:", share_output)
 
 
 # -----------------------------
@@ -262,6 +273,7 @@ for tick in ax.yaxis.get_major_ticks():
     tick.label1.set_fontsize(8)
 
 plt.tight_layout()
-plt.savefig("hist_marginal_num_wishes.pdf", format="pdf", bbox_inches="tight")
+wish_output = args.output_dir / f"hist_marginal_num_wishes_{args.year}.pdf"
+plt.savefig(wish_output, format="pdf", bbox_inches="tight")
 plt.close()
-print("Saved 2D: hist_marginal_num_wishes.pdf")
+print("Saved 2D:", wish_output)

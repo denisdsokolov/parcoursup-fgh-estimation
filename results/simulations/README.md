@@ -1,48 +1,29 @@
-# Simulation results
+# Historical simulation outputs
 
-These files contain aggregate results for two matching mechanisms on simulated markets for
-2022, 2023, and 2024 (the Parcoursup main admission stage with simulated student preferences).
+These aggregate files are retained development runs for 2022, 2023, and 2024. They are useful
+for inspecting output schemas, but they are **not exact replications of the manuscript tables**:
+some contain 5, 100, 490, or 500 markets, and multiple same-year files came from different
+intermediate specifications.
+
+Use [`../paper/mechanism_comparison.csv`](../paper/mechanism_comparison.csv) for the canonical
+values reported in Tables 5, D.9, and D.13. A newly completed run writes
+`PaperSummary{year}.csv` with the same paired reporting conventions.
 
 ## Columns
 
-The tables contain the following columns:
-PCS_matched_studs_amount - number of matched students under PCS,
-SF_matched_studs_amount - same for SF-CDA,
-PCS_matched_b_studs_amount - number of matched boursiers under PCS,
-SF_matched_b_studs_amount - same for SF-CDA,
-PCS_je_studs_amount - number of blocking students under PCS,
-SF_je_studs_amount - same for SF-CDA,
-PCS_je_b_studs_amount - number of blocking boursiers under PCS,
-SF_je_b_studs_amount - same for SF-CDA,
-PCS_95_iter - index of iteration when at least 95% of seats are filled,
-PCS_99_iter - index of iteration when at least 99% of seats are filled,
-PCS_last_iter - index of the last iteration,
-SF_95_iter - same for SF-CDA,
-SF_99_iter - same for SF-CDA,
-SF_last_iter - same for SF-CDA,
-PCS_avg_b - average compliance of b target seats,
-SF_avg_b - same for SF-CDA,
-PCS_avg_r - average compliance of r target seats,
-SF_avg_r - same for SF-CDA,
-PCS_total_b - total fill for b target seats,
-SF_total_b - same for SF-CDA,
-PCS_total_r - total fill for r target seats,
-SF_total_r - same for SF-CDA,
-PCS_stu_pref - number of students that prefer PCS matching,
-SF_stu_pref - same for SF-CDA,
-PCS_b_stu_pref - number of boursiers that prefer PCS matching,
-SF_b_stu_pref - same for SF-CDA,
-PCS_only_matched - number of students that matched only in PCS matching,
-SF_only_matched - same for SF-CDA,
-PCS_only_matched_b - number of boursiers that matched only in PCS matching,
-SF_only_matched_b - same for SF-CDA,
-PCS_avg_rank_impr - average rank improvement if switched to PCS matching,
-SF_avg_rank_impr - same for SF-CDA
-PCS_avg_rank_impr_b - average rank improvement for boursiers if switched to PCS matching,
-SF_avg_rank_impr_b - same for SF-CDA
+- `PCS_*`, `SF_*`: outcomes under the current fixed call-order mechanism and SF-CDA.
+- `*_matched_studs_amount`, `*_matched_b_studs_amount`: all matched candidates and matched
+  scholarship holders.
+- `*_je_studs_amount`, `*_je_b_studs_amount`: candidates and scholarship holders with at least
+  one pairwise justified-envy claim.
+- `*_95_iter`, `*_99_iter`: zero-based indices of the first stage crossing each threshold;
+  `*_last_iter` is the total number of stages.
+- `*_avg_b`, `*_avg_r`: program-level target-compliance ratios (multiply by 100 for percent).
+- `*_total_b`, `*_total_r`: filled scholarship- and residence-target seats.
+- `*_stu_pref`, `*_b_stu_pref`: candidates who prefer that mechanism's assignment.
+- `*_only_matched`, `*_only_matched_b`: candidates matched only by that mechanism.
+- `*_avg_rank_impr`, `*_avg_rank_impr_b`: average preference-rank improvement among relevant
+  switchers.
+- `NET_*`: `SF_* - PCS_*` when present.
 
-`NET_*` columns are calculated as `SF_* - PCS_*`.
-
-The calculations use approximately 880,000 candidates and 21,000 programs per year. Source
-tables: `a_adm`, `a_rec_grp`, `a_rec`, `a_voe`, `c_can_grp`, `g_can`, `g_tri_ins`, `i_ins`,
-and `sp_g_tri_aff`.
+All files are aggregate. Individual-level source rows and identifiers are not published.

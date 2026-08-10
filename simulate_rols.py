@@ -3,6 +3,7 @@ import pandas as pd
 import gzip, pickle
 from pathlib import Path
 from tqdm import tqdm
+from preference_features import log_count
 
 def simulate_ranked_lists(
     R: int,
@@ -21,8 +22,9 @@ def simulate_ranked_lists(
     """
     Return a dict {r: [ROL_i for students in the order of 'students']} and (optionally) save it as gz-pickle.
 
-    Utility used for in-market progs (not 0):
-        V_is = alpha_s + beta_neat * near_is + beta_near_sch * (near_is * b_i)
+    Utility used for in-market programs applies every known interaction found in
+    ``beta_hat``. Missing coefficients are treated as zero, which permits annual
+    specifications to differ without hand-editing this simulator.
     Outside (s = 0), only if include_outside_rank=True:
         U_i0 = alpha_0 + beta_out_sch * b_i + beta_out_wish * wishes_count_i + Gumbel
     """
@@ -32,29 +34,31 @@ def simulate_ranked_lists(
 
     # 0) Exctracting coeffs
     b = beta_hat.set_index("name")["coef"]
-    beta_near = float(b["near_is"])
-    #beta_near_sch = float(b["near_sch"])
-    beta_bOnly_sch = float(b["bOnly_sch"])
-    #beta_br_sch = float(b["br_sch"])
-    #beta_br_near = float(b["br_near"])
-    #beta_near_nat = float(b["near_nat"])
-    #beta_near_sex = float(b["near_sex"])
-    #beta_bShare_sex = float(b["bShare_sex"])
-    #beta_rShare_sex = float(b["rShare_sex"])
-    #beta_rShare_sch = float(b["rShare_sch"])
-    #beta_bShare_near = float(b["bShare_near"])
-    #beta_bShare_sch = float(b["bShare_sch"])
-    #beta_rShare_near = float(b["rShare_near"])
-    beta_bOnly_bOnlyWish = float(b["bOnly_bOnlyWish"])
-    beta_br_brWishRes = float(b["br_brWishRes"])
-    beta_logQuota_nat = float(b["logQuota_nat"])
-    beta_logQuota_near = float(b["logQuota_near"])
-    beta_logQuota_sex = float(b["logQuota_sex"])
-    beta_logQuota_sch = float(b["logQuota_sch"])
-    beta_out_sch = float(b["out_sch_0"])
-    beta_out_sex = float(b["out_sex_0"])
-    beta_out_nat = float(b["out_nat_0"])
-    beta_out_wish = float(b["out_wish_0"])
+    def coefficient(name):
+        return float(b.get(name, 0.0))
+    beta_near = coefficient("near_is")
+    beta_near_sch = coefficient("near_sch")
+    beta_bOnly_sch = coefficient("bOnly_sch")
+    beta_br_sch = coefficient("br_sch")
+    beta_br_near = coefficient("br_near")
+    beta_near_nat = coefficient("near_nat")
+    beta_near_sex = coefficient("near_sex")
+    beta_bShare_sex = coefficient("bShare_sex")
+    beta_rShare_sex = coefficient("rShare_sex")
+    beta_rShare_sch = coefficient("rShare_sch")
+    beta_bShare_near = coefficient("bShare_near")
+    beta_bShare_sch = coefficient("bShare_sch")
+    beta_rShare_near = coefficient("rShare_near")
+    beta_bOnly_bOnlyWish = coefficient("bOnly_bOnlyWish")
+    beta_br_brWishRes = coefficient("br_brWishRes")
+    beta_logQuota_nat = coefficient("logQuota_nat")
+    beta_logQuota_near = coefficient("logQuota_near")
+    beta_logQuota_sex = coefficient("logQuota_sex")
+    beta_logQuota_sch = coefficient("logQuota_sch")
+    beta_out_sch = coefficient("out_sch_0")
+    beta_out_sex = coefficient("out_sex_0")
+    beta_out_nat = coefficient("out_nat_0")
+    beta_out_wish = coefficient("out_wish_0")
 
     # 1) Build fast lookups
     # all alphas
@@ -94,8 +98,8 @@ def simulate_ranked_lists(
         lists = []
         for sid, b_i, wcnt, sex, nat, bOnlyWish, brWishRes in stu_cols.itertuples(index=False):
             wcnt = wcnt / 10.0
-            bOnlyWish = bOnlyWish / 10.0
-            brWishRes = brWishRes / 10.0
+            bOnlyWish = log_count(bOnlyWish)
+            brWishRes = log_count(brWishRes)
             # 2a) the student's considered alternatives
             if use_wishes_only:
                 progs = wishes_by_sid.get(sid)
@@ -120,18 +124,18 @@ def simulate_ranked_lists(
 
             v_is = (a_vec +
                 beta_near * near +
-                #beta_near_sch * (near * int(b_i)) +
+                beta_near_sch * (near * int(b_i)) +
                 beta_bOnly_sch * (bOnly * int(b_i)) +
-                #beta_br_sch * (br * int(b_i)) +
-                #beta_br_near * (br * near) +
-                #beta_near_nat * (near * int(nat)) +
-                #beta_near_sex * (near * int(sex)) +
-                #beta_bShare_sex * (bShare * int(sex)) +
-                #beta_rShare_sex * (rShare * int(sex)) +
-                #beta_rShare_sch * (rShare * int(b_i)) +
-                #beta_bShare_near * (bShare * near) +
-                #beta_bShare_sch * (bShare * int(b_i)) +
-                #beta_rShare_near * (rShare * near) +
+                beta_br_sch * (br * int(b_i)) +
+                beta_br_near * (br * near) +
+                beta_near_nat * (near * int(nat)) +
+                beta_near_sex * (near * int(sex)) +
+                beta_bShare_sex * (bShare * int(sex)) +
+                beta_rShare_sex * (rShare * int(sex)) +
+                beta_rShare_sch * (rShare * int(b_i)) +
+                beta_bShare_near * (bShare * near) +
+                beta_bShare_sch * (bShare * int(b_i)) +
+                beta_rShare_near * (rShare * near) +
                 beta_bOnly_bOnlyWish * (bOnly * bOnlyWish) +
                 beta_br_brWishRes * (br * brWishRes) +
                 beta_logQuota_nat * (logQuota * int(nat)) +

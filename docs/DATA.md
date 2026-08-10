@@ -34,8 +34,10 @@ The preprocessing script writes six tables to `PARCOURSUP_DATA_DIR`:
 - `data_matching.csv`
 - `data_ranks.csv`
 
-The estimation stage additionally expects or creates `alpha_hat.csv`, `beta_hat.csv`, and
-optionally `rols.pkl.gz` in the same directory.
+The estimation stage additionally expects or creates `alpha_hat.csv`, `beta_hat.csv`, the
+sampled program IDs in `progs_keep_set.pkl`, and optionally `rols.pkl.gz` in the same directory.
+The saved program set and coefficient files are required for an exact paper replication; they
+cannot be reconstructed from the public aggregate outputs alone.
 
 ## Published outputs
 

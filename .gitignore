@@ -39,3 +39,5 @@ venv/
 *.pkl.gz
 /hist3d_res_matrix.csv
 /SimulationsData*.csv
+/PaperSummary*.csv
+/tmp/
