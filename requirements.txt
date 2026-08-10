@@ -1,0 +1,7 @@
+matplotlib>=3.9,<4
+numpy>=1.26,<2
+pandas>=2.2,<3
+pylogit==1.0.1
+scipy>=1.13,<2
+statsmodels>=0.14,<1
+tqdm>=4.66,<5

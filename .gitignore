@@ -1,0 +1,43 @@
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Restricted/raw Parcoursup extracts
+/a_adm*.csv
+/a_rec*.csv
+/a_voe*.csv
+/c_can_grp*.csv
+/g_can*.csv
+/g_tri_ins*.csv
+/i_ins*.csv
+/sp_g_tri_aff*.csv
+/data/raw/**
+
+# Generated/intermediate data
+/FGH_data_*/
+/data/processed/**
+*.pkl
+*.pkl.gz
+/hist3d_res_matrix.csv
+/SimulationsData*.csv
+/PaperSummary*.csv
+/tmp/
