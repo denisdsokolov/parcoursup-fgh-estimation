@@ -12,21 +12,21 @@ def _complete_result_frame():
     return pd.DataFrame(data)
 
 
-def test_paper_summary_uses_paired_differences_and_monte_carlo_se():
+def test_paper_summary_uses_paired_differences_and_across_simulation_sd():
     summary = summarize_paired_results(_complete_result_frame())
     matched = summary.loc[summary["metric"] == "matched_candidates"].iloc[0]
 
     assert matched["simulations"] == 3
     assert matched["pcs_mean"] == 2.0
-    assert matched["pcs_se"] == pytest.approx(1 / 3**0.5)
+    assert matched["pcs_sd"] == pytest.approx(1.0)
     assert matched["difference_mean"] == 1.0
-    assert matched["difference_se"] == pytest.approx(0.1 / 3**0.5)
-    assert matched["significance"] == "**"
+    assert matched["difference_sd"] == pytest.approx(0.1)
+    assert "pcs_se" not in summary and "p_value" not in summary
 
 
-def test_paper_summary_scales_compliance_to_percentage_points():
+def test_paper_summary_scales_fulfillment_to_percentage_points():
     summary = summarize_paired_results(_complete_result_frame())
-    compliance = summary.loc[summary["metric"] == "avg_b_compliance_pct"].iloc[0]
+    compliance = summary.loc[summary["metric"] == "avg_b_target_fulfillment_pct"].iloc[0]
 
     assert compliance["pcs_mean"] == 200.0
     assert compliance["difference_mean"] == 100.0

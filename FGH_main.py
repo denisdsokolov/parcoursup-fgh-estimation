@@ -4,7 +4,8 @@ import load_tables, sampling, panel_builder, estimate_fgh, alpha_ols, simulate_r
 import pandas as pd
 import numpy as np
 from project_config import env_bool, env_int, env_path
-from paper_reporting import summarize_paired_results
+from paper_reporting import summarize_paired_results, first_filled_stage
+from percentage_targets import target_count
 
 gc.collect() # frees up memory
 
@@ -31,11 +32,12 @@ orig_stat_print = env_bool("PARCOURSUP_PRINT_STATS", False) # Do we want to prin
 use_ROLs = env_bool("PARCOURSUP_USE_ROLS", False) # Do we want to use heavy ROLs file or create new ROLs per each market?
 load_ROLs = env_bool("PARCOURSUP_LOAD_ROLS", True) # True is ROLs of students are already constructed and saved
 
-bunch_size = env_int("PARCOURSUP_BUNCH_SIZE", 10, minimum=1) # how many markets in one bunch
-bunches_number = env_int("PARCOURSUP_BUNCHES", 100, minimum=1) # number of bunches (1,000 markets in the 2024 paper exercise)
-markets_number = bunch_size*bunches_number # how many simulated markets
-simulation_seed = env_int("PARCOURSUP_SEED", 2024, minimum=0)
-result_year = env_int("PARCOURSUP_RESULT_YEAR", 2024, minimum=2000)
+data_year = env_int("PARCOURSUP_YEAR", 24, minimum=0)
+result_year = env_int("PARCOURSUP_RESULT_YEAR", 2000 + data_year if data_year < 100 else data_year, minimum=2000)
+bunch_size = env_int("PARCOURSUP_BUNCH_SIZE", 10, minimum=1)
+bunches_number = env_int("PARCOURSUP_BUNCHES", 100 if result_year == 2024 else 10, minimum=1)
+markets_number = bunch_size*bunches_number
+simulation_seed = env_int("PARCOURSUP_SEED", result_year, minimum=0)
 
 final_analysis = env_bool("PARCOURSUP_FINAL_ANALYSIS", True) # after all simulated data is obtained
 
@@ -110,41 +112,48 @@ if orig_stat_print:
     stu_b_matched = len(orig_match_b)
     print(f"Sch. holders init. matched: {stu_b_matched} ({(100*stu_b_matched/stu_b_num):.1f}% of sch. holders)")
     original_avg_b, original_avg_r, original_total_b, original_total_r = cda_mechanisms.avg_traits_compl(original_matching, programs, students, resident)
-    print(f"Initial matching avg b- and r-compliances: ({100*original_avg_b:.2f}%, {100*original_avg_r:.2f}%)")
-    total_qouta_b = sum(np.ceil(programs['quota']*programs['b_share']/100))
-    total_qouta_r = sum(np.ceil(programs['quota']*programs['r_share']/100))
+    print(f"Initial matching mean b- and r-target fulfillment: ({100*original_avg_b:.2f}%, {100*original_avg_r:.2f}%)")
+    enrollment = original_matching.groupby('program_id').size()
+    totals = [(target_count(row.b_share, int(enrollment.get(row.program_id, 0))),
+               target_count(row.r_share, int(enrollment.get(row.program_id, 0))))
+              for row in programs.itertuples(index=False) if row.b_share > 0]
+    total_qouta_b = sum(b for b, _ in totals)
+    total_qouta_r = sum(r for _, r in totals)
     print(f"Initial matching total b- and r-fills: ({original_total_b:.0f}/{total_qouta_b:.0f}, {original_total_r:.0f}/{total_qouta_r:.0f})")
 
-    # Interestengly, unlike 2022 data, in 2024 data there are two programs (115874 and 168399) of r_only_type (we neglect this and treat them as br-type)
+    # Residence-only programs are outside the paper's b and b&r fulfillment populations.
 
     print("------------------------")
     programs_b_only = programs[programs['b_only_type'] == 1]
     print(f"b-only programs: b-target: {programs_b_only['b_share'].mean()} ({programs_b_only['b_share'].std()})")
-    print(f"                 total b-quota: {sum(np.ceil(programs_b_only['quota']*programs_b_only['b_share']/100))}")
+    print(f"                 full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_b_only.itertuples(index=False))}")
     programs_br = programs[programs['br_type'] == 1]
     print(f"br programs: b-target: {programs_br['b_share'].mean()} ({programs_br['b_share'].std()})")
     print(f"             r-target: {programs_br['r_share'].mean()} ({programs_br['r_share'].std()})")
-    print(f"             total b-quota: {sum(np.ceil(programs_br['quota']*programs_br['b_share']/100))}")
-    print(f"             total r-quota: {sum(np.ceil(programs_br['quota']*programs_br['r_share']/100))}")
+    print(f"             full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_br.itertuples(index=False))}")
+    print(f"             full-capacity r-target positions: {sum(target_count(row.r_share, row.quota) for row in programs_br.itertuples(index=False))}")
     programs_b_only_board = programs_b_only[programs_b_only['internat'] == 1]
     print(f"b-only internats: b-target: {programs_b_only_board['b_share'].mean()} ({programs_b_only_board['b_share'].std()})")
-    print(f"                  total b-quota: {sum(np.ceil(programs_b_only_board['quota']*programs_b_only_board['b_share']/100))}")
+    print(f"                  full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_b_only_board.itertuples(index=False))}")
     programs_b_only_reg = programs_b_only[programs_b_only['internat'] == 0]
     print(f"b-only regular: b-target: {programs_b_only_reg['b_share'].mean()} ({programs_b_only_reg['b_share'].std()})")
-    print(f"                total b-quota: {sum(np.ceil(programs_b_only_reg['quota']*programs_b_only_reg['b_share']/100))}")
-    programs_br_greater = programs_br[programs_br['b_share'] + programs_br['r_share']>100]
-    print(f"br programs (qb+qr>100): b-target: {programs_br_greater['b_share'].mean()} ({programs_br_greater['b_share'].std()})")
+    print(f"                full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_b_only_reg.itertuples(index=False))}")
+    capacity_target_sum = pd.Series(
+        [target_count(row.b_share, row.quota) + target_count(row.r_share, row.quota)
+         for row in programs_br.itertuples(index=False)], index=programs_br.index)
+    programs_br_greater = programs_br[capacity_target_sum > programs_br['quota']]
+    print(f"br programs (T_b(q)+T_r(q)>q): b-target: {programs_br_greater['b_share'].mean()} ({programs_br_greater['b_share'].std()})")
     print(f"                         r-target: {programs_br_greater['r_share'].mean()} ({programs_br_greater['r_share'].std()})")
-    print(f"                         total b-quota: {sum(np.ceil(programs_br_greater['quota']*programs_br_greater['b_share']/100))}")
-    print(f"                         total r-quota: {sum(np.ceil(programs_br_greater['quota']*programs_br_greater['r_share']/100))}")
-    programs_br_less = programs_br[programs_br['b_share'] + programs_br['r_share']<=100]
-    print(f"br programs (qb+qr<=100): b-target: {programs_br_less['b_share'].mean()} ({programs_br_less['b_share'].std()})")
+    print(f"                         full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_br_greater.itertuples(index=False))}")
+    print(f"                         full-capacity r-target positions: {sum(target_count(row.r_share, row.quota) for row in programs_br_greater.itertuples(index=False))}")
+    programs_br_less = programs_br[capacity_target_sum <= programs_br['quota']]
+    print(f"br programs (T_b(q)+T_r(q)<=q): b-target: {programs_br_less['b_share'].mean()} ({programs_br_less['b_share'].std()})")
     print(f"                         r-target: {programs_br_less['r_share'].mean()} ({programs_br_less['r_share'].std()})")
-    print(f"                         total b-quota: {sum(np.ceil(programs_br_less['quota']*programs_br_less['b_share']/100))}")
-    print(f"                         total r-quota: {sum(np.ceil(programs_br_less['quota']*programs_br_less['r_share']/100))}")
-    programs_AA = programs[(programs['b_share'] > 0) | (programs['r_share'] > 0)]
+    print(f"                         full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_br_less.itertuples(index=False))}")
+    print(f"                         full-capacity r-target positions: {sum(target_count(row.r_share, row.quota) for row in programs_br_less.itertuples(index=False))}")
+    programs_AA = programs[programs['b_share'] > 0]
     print(f"AA programs: b-target: {programs_AA['b_share'].mean()} ({programs_AA['b_share'].std()})")
-    print(f"             total b-quota: {sum(np.ceil(programs_AA['quota']*programs_AA['b_share']/100))}")
+    print(f"             full-capacity b-target positions: {sum(target_count(row.b_share, row.quota) for row in programs_AA.itertuples(index=False))}")
 
     # Creating size_i-by-size_j matrix for 3d histogram of residentship data:
     #   in each cell (i,j) we put number of students with:
@@ -187,6 +196,8 @@ if orig_stat_print:
 
 if use_ROLs:
     if not load_ROLs: # if we want to perform FGH estimation of students' ROLs
+        if result_year != 2024:
+            raise ValueError("The included estimator is the 2024 specification; use the original annual coefficients for other years.")
         outside_only_students_share = 0.001 # how many candidates who not wished any of sampled programmes to keep in panel
         ROLs_per_student = 30 # number of simulated ROLs per student
         new_keep_set = False # True if we want to sample new subset of programs for estimation
@@ -288,8 +299,9 @@ if use_ROLs:
 # DA mechanisms
 #------------------------
 
-alpha_hat = pd.read_csv(DATADIR.parent/f"{DATADIR.name}/alpha_hat.csv")
-beta_hat = pd.read_csv(DATADIR.parent/f"{DATADIR.name}/beta_hat.csv")
+if not use_ROLs:
+    alpha_hat = pd.read_csv(p/"alpha_hat.csv")
+    beta_hat = pd.read_csv(p/"beta_hat.csv")
 simulations_data = pd.DataFrame(columns=['PCS_matched_studs_amount', 'SF_matched_studs_amount',
                                             'PCS_matched_b_studs_amount', 'SF_matched_b_studs_amount',
                                             'PCS_je_studs_amount', 'SF_je_studs_amount',
@@ -310,7 +322,7 @@ simulations_data = pd.DataFrame(columns=['PCS_matched_studs_amount', 'SF_matched
 for bc in range(bunches_number):
     for mk in range(bunch_size):
         print(f"Market {(bc*bunch_size)+mk+1}/{markets_number} (bunch {bc+1})")
-        rols1 = simulate_rols.simulate_ranked_lists(
+        rols1 = rols if use_ROLs else simulate_rols.simulate_ranked_lists(
             R=1,
             students=students,
             programs=programs,
@@ -324,7 +336,7 @@ for bc in range(bunches_number):
             seed=simulation_seed + (bc * bunch_size) + mk,
         )
         # sampling random profile of students preferences
-        prefs = pref_profile_sampling.sample_random_profile(rols1, students)#, seed=42)
+        prefs = pref_profile_sampling.sample_random_profile(rols1, students, seed=simulation_seed + bc*bunch_size + mk)
 
         # performing PCS (CDA) and SF-CDA
         PCS_matching, PCS_last_iter, PCS_filled_per_stage = cda_mechanisms.run_cda_fast(programs, students, resident, prefs, ranks, 'call_rank', 'CDA', False)
@@ -339,10 +351,10 @@ for bc in range(bunches_number):
         SF_matched_b_studs_amount = len(SF_matched_b_studs)
 
         # Calculating 95%-fill and 99%-fill stages for both mechs
-        PCS_95_iter = next(i for i, val in enumerate(PCS_filled_per_stage) if val >= 0.95 * PCS_filled_per_stage[-1])
-        PCS_99_iter = next(i for i, val in enumerate(PCS_filled_per_stage) if val >= 0.99 * PCS_filled_per_stage[-1])
-        SF_95_iter = next(i for i, val in enumerate(SF_filled_per_stage) if val >= 0.95 * SF_filled_per_stage[-1])
-        SF_99_iter = next(i for i, val in enumerate(SF_filled_per_stage) if val >= 0.99 * SF_filled_per_stage[-1])
+        PCS_95_iter = first_filled_stage(PCS_filled_per_stage, 0.95)
+        PCS_99_iter = first_filled_stage(PCS_filled_per_stage, 0.99)
+        SF_95_iter = first_filled_stage(SF_filled_per_stage, 0.95)
+        SF_99_iter = first_filled_stage(SF_filled_per_stage, 0.99)
 
         # Amount of students with je for both mechs
         PCS_je_studs_amount, PCS_je_b_studs_amount = cda_mechanisms.number_of_students_with_je(PCS_matching, prefs, ranks, programs, students, resident)
@@ -353,7 +365,7 @@ for bc in range(bunches_number):
         PCS_je_students_perc = (PCS_je_studs_amount/stu_n) * 100
         SF_je_students_perc = (SF_je_studs_amount/stu_n) * 100
 
-        # Average b and r compliances
+        # Mean final-enrollment b- and r-target fulfillment
         PCS_avg_b, PCS_avg_r, PCS_total_b, PCS_total_r = cda_mechanisms.avg_traits_compl(PCS_matching, programs, students, resident)
         SF_avg_b, SF_avg_r, SF_total_b, SF_total_r = cda_mechanisms.avg_traits_compl(SF_matching, programs, students, resident)
 
@@ -390,8 +402,8 @@ filename = f"SimulationsData{result_year}_{bc}.csv"
 simulations_data = pd.read_csv(p/filename)
 
 if final_analysis:
-    # Tables 5, D.9, and D.13 report draw means, Monte Carlo standard
-    # errors, and paired SF-CDA minus PCS tests.
+    # Main/supplement tables report draw means and across-simulation SDs;
+    # differences use paired SF-CDA minus PCS observations.
     summary = summarize_paired_results(simulations_data)
     summary.to_csv(p/f"PaperSummary{result_year}.csv", index=False)
     print(summary)

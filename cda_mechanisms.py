@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Dict, Set, Iterable, Optional, List
 import pandas as pd
+from percentage_targets import target_count
 
 # =============================================================
 # FAST CDA core (stop on NO REJECTIONS) + pluggable
@@ -13,18 +14,25 @@ def students_proposed(
     students: pd.DataFrame,              # df indexed by student_id; may have 'b_trait'
     residents: pd.DataFrame,             # df indexed by student_id; may have 'r_trait'
     mechanism: str,                      # 'CDA' or 'SF-CDA'
+    *,
+    target_basis: str = 'stage',         # 'capacity' is the exactly equivalent implementation
 ) -> Iterable[int]:                      # returns iterable of student_ids to propose now
-    """Proposal rule used by the engine.
+    """Select new offers while retaining every old-timer.
 
-    • CDA: take up to the current deficit best *never‑proposed*.
-    • SF‑CDA: enforce target shares with the anchor/reshuffle/greedy procedure
-      in the paper. The first anchor that fills capacity and both residual
-      targets is the highest-priority stable anchor, ``k_left``. Targets are
-      computed per program from
-      'b_share' and 'r_share' in `programs` (percentages), each contributing
-      ceil(share * quota / 100) target seats. A student with both traits counts
-      toward **both** targets when tentatively admitted.
+    SF-CDA applies the paper's left-endpoint anchor selector to the residual
+    newcomer problem. Shares in the input are percentages, with one-to-all
+    accounting. Its full attainable cohort has size
+    ``len(held) + min(quota - len(held), len(newcomers))``. Residual targets
+    subtract the held trait counts and are capped at residual capacity.
+
+    ``target_basis='capacity'`` implements the exact integer alternative in
+    the paper's Exact integer implementation proposition. When the two
+    denominators differ, all newcomers are selected by non-wastefulness.
+    Both implementations concern seat capacities and soft targets; this
+    function does not implement the supplement's hard housing constraint.
     """
+    if target_basis not in {'stage', 'capacity'}:
+        raise ValueError("target_basis must be 'stage' or 'capacity'")
     # ---------- Common: fast O(1) lookups ----------
     if program_id not in programs.index:
         return ()
@@ -51,9 +59,15 @@ def students_proposed(
         return out
 
     # ---------- SF‑CDA branch ----------
+    real_list = [s for s in program_ranking if s in never_proposed]
+    if len(real_list) <= q_def:
+        return real_list  # non-wastefulness: targets cannot exclude anyone
+    cohort_size = len(held_students) + min(q_def, len(real_list))
+    if target_basis == 'capacity':
+        cohort_size = quota
     # Fetch targets (percentages may be missing ⇒ treated as 0)
-    b_share = float(programs.at[program_id, 'b_share']) if 'b_share' in programs.columns else 0.0
-    r_share = float(programs.at[program_id, 'r_share']) if 'r_share' in programs.columns else 0.0
+    b_share = programs.at[program_id, 'b_share'] if 'b_share' in programs.columns else 0.0
+    r_share = programs.at[program_id, 'r_share'] if 'r_share' in programs.columns else 0.0
 
     # Trait maps
     # b-trait: program-agnostic, from students.b_trait if available
@@ -81,17 +95,11 @@ def students_proposed(
         b_count += has_b(s)
         r_count += has_r(s)
 
-    # Targets (ceil) and non‑negative deficits for traits
-    from math import ceil
-    b_target = int(ceil(b_share * quota / 100.0))
-    r_target = int(ceil(r_share * quota / 100.0))
-    qb_def = max(0, b_target - b_count)
-    qr_def = max(0, r_target - r_count)
-
-    # Prepare the real ranking over *never‑proposed* only
-    real_list = [s for s in program_ranking if s in never_proposed]
-    if not real_list:
-        return ()
+    # Derived percentage thresholds; cap residuals to the anchor domain.
+    b_target = target_count(b_share, cohort_size)
+    r_target = target_count(r_share, cohort_size)
+    qb_def = min(q_def, max(0, b_target - b_count))
+    qr_def = min(q_def, max(0, r_target - r_count))
 
     # Helper: greedy picker respecting deficits (counts both‑trait for both)
     def pick_student_subset(ordered: List[int], q: int, qb: int, qr: int) -> List[int]:
@@ -168,7 +176,7 @@ def students_proposed(
 
     last_subset: List[int] = []
 
-    # --- NEW: empty‑anchor pass ---
+    # --- Empty-anchor pass ---
     # Treat the best both‑trait as anchor2 and consider reshuffle with *no* top both block.
     first_both_idx = both_positions[0]
     excluded_tail_empty = set(real_list[first_both_idx:])            # drop from first both onward
@@ -214,7 +222,7 @@ def students_proposed(
             if (q_def - len(subset) == 0) and (max(0, qb_def - add_b) == 0) and (max(0, qr_def - add_r) == 0):
                 return subset
 
-    # If none of the anchors zeroed all deficits, return the last subset tried
+    # With an unattainable target, the terminal anchor gives the stable completion.
     return last_subset
 
 
@@ -230,14 +238,25 @@ def run_cda_fast(
     rank_col: str = 'call_rank',          # 'call_rank' (Parcoursup CDA) or 'merit_rank' (SF‑CDA later)
     mechanism: str = 'CDA',               # forwarded to students_proposed(); engine is neutral
     verbose: bool = False,                # optional logging per iteration
+    *,
+    target_basis: str = 'stage',
+    proposal_history: list[dict[int, frozenset[int]]] | None = None,
 ) -> tuple[pd.DataFrame, int, list[int]]:  # returns (final matching [student_id, program_id], number of iterations, list with numbers of filled seats per stage)
-    """Ultra‑fast program‑proposing DA that stops on **no rejections**.
+    """Synchronous college-proposing DA, stopping on no rejections.
+
+    Every program chooses against the same previous-stage tentative matching.
+    Candidate responses are processed only after all choices have been fixed.
+    Optional proposal_history records full Choice_k sets for finite checks.
 
     Residents schema: `residents` contains ONLY (student_id, program_id) pairs
     where the student has the r‑trait for that specific program. There is **no**
     `r_trait` column; the trait is determined by row presence.
     """
     # ---------- validation & defensive copies ----------
+    if mechanism not in {'CDA', 'SF-CDA'}:
+        raise ValueError("mechanism must be 'CDA' or 'SF-CDA'")
+    if target_basis not in {'stage', 'capacity'}:
+        raise ValueError("target_basis must be 'stage' or 'capacity'")
     if rank_col not in ranks.columns:                                        # ensure chosen priority exists
         raise ValueError(f"rank_col='{rank_col}' not in ranks; available: {list(ranks.columns)}")
 
@@ -288,7 +307,8 @@ def run_cda_fast(
     # ---------- per‑program ranking lists ----------
     prog_ranking: Dict[int, List[int]] = {}                                   # pid -> ordered students
     for pid, sub in ranks.sort_values(['program_id', rank_col]).groupby('program_id', sort=False):
-        prog_ranking[int(pid)] = [int(s) for s in sub['student_id'].tolist()]
+        prog_ranking[int(pid)] = [int(s) for s in sub['student_id'].tolist()
+                                  if int(pid) in stud_pref_pos.get(int(s), {})]
 
     # ---------- quotas & initial state ----------
     prog_quota: Dict[int, int] = {int(row.program_id): int(row.quota)         # pid -> quota
@@ -326,6 +346,11 @@ def run_cda_fast(
         iteration += 1
         rejections_made = 0                                                  # count rejections this round
 
+        # Freeze all program choices before processing any candidate response.
+        new_offers: list[tuple[int, list[int]]] = []
+        stage_choices = ({pid: frozenset(held) for pid, held in hb_prog.items()}
+                         if proposal_history is not None else None)
+
         # ----- each program proposes up to its deficit -----
         for pid, quota in pquota.items():                                     # iterate over programs
             held = hb_prog[pid]                                              # current held at this program
@@ -358,14 +383,30 @@ def run_cda_fast(
                 students,                                                    # has b_map attr
                 residents,                                                   # has r_set_by_program attr
                 mechanism,                                                   # mechanism tag
+                target_basis=target_basis,
             )
+            subset = list(subset)
             if not subset:                                                   # this program proposes to nobody now
                 continue
 
             # Remove proposed from remain (so they will never be proposed again)
             rset.difference_update(subset)                                   # mutate in place; O(k)
 
-            # Student responses (immediate)
+            new_offers.append((pid, subset))
+            if stage_choices is not None:
+                stage_choices[pid] = stage_choices[pid] | frozenset(subset)
+
+            # Move pointer forward over any IDs we just proposed
+            j2 = pptr[pid]
+            while j2 < n and (rank_list[j2] not in rset):                    # skip proposed/removed ids
+                j2 += 1
+            pptr[pid] = j2                                                   # store back pointer
+
+        # ----- simultaneous choices are now fixed; candidates respond -----
+        if proposal_history is not None:
+            proposal_history.append(stage_choices)
+        for pid, subset in new_offers:
+            held = hb_prog[pid]
             for sid in subset:                                               # each proposed student
                 current = hb_stud.get(sid)                                   # their current held program
                 if student_prefers(sid, pid, current):                       # accepts new offer if better
@@ -377,11 +418,6 @@ def run_cda_fast(
                 else:
                     rejections_made += 1                                     # declined new program (silent reject)
 
-            # Move pointer forward over any IDs we just proposed
-            j2 = pptr[pid]
-            while j2 < n and (rank_list[j2] not in rset):                    # skip proposed/removed ids
-                j2 += 1
-            pptr[pid] = j2                                                   # store back pointer
 
         # record total filled seats at end of this stage
         filled_total = sum(len(hb_prog[pid]) for pid in pquota)
@@ -390,7 +426,7 @@ def run_cda_fast(
         if verbose:                                                           # optional progress
             print(f"iter={iteration} rejections={rejections_made} filled={filled_total}")
 
-        if rejections_made == 0:                                             # EARLY STOP: stable (no rejections)
+        if rejections_made == 0:                                             # no rejections; full stability is domain-dependent
             break
 
     # ---------- build and return final matching ----------
@@ -412,7 +448,7 @@ def number_of_students_with_je(
 
     Inputs
     ------
-    matching  : DataFrame with columns ['student_id','program_id'] (tentative matches)
+    matching  : DataFrame with columns ['student_id','program_id'] (final matching)
     prefs     : DataFrame with ['student_id','program_id','rank'] (1=top)
     ranks     : DataFrame with ['program_id','student_id','merit_rank'] (must include merit_rank)
     programs  : DataFrame with ['program_id','quota','b_share','r_share'] (shares in percent; shares optional→0)
@@ -428,7 +464,8 @@ def number_of_students_with_je(
     -----
     • A both-trait student contributes to BOTH b and r counts.
     • Deficits are Δb= max(0, b_target - B), Δr= max(0, r_target - R), with targets
-      b_target = ceil(b_share*quota/100), r_target = ceil(r_share*quota/100).
+      b_target = ceil(b_share*enrollment/100),
+      r_target = ceil(r_share*enrollment/100). A replacement preserves enrollment.
     • For existence checks we aggregate current holders of each program by category:
       (b2,r2) ∈ {(0,0),(1,0),(0,1),(1,1)}, storing their counts and worst merit rank.
     • For clause (c) (priority tie-break), we check if s1's merit position at f2 is
@@ -451,11 +488,11 @@ def number_of_students_with_je(
     ranks = ranks[['program_id','student_id','merit_rank']].astype(int)
     programs[['program_id','quota']] = programs[['program_id','quota']].astype(int)
     if 'b_share' in programs.columns:
-        programs['b_share'] = programs['b_share'].astype(float)
+        programs['b_share'] = programs['b_share'].fillna(0.0)
     else:
         programs['b_share'] = 0.0
     if 'r_share' in programs.columns:
-        programs['r_share'] = programs['r_share'].astype(float)
+        programs['r_share'] = programs['r_share'].fillna(0.0)
     else:
         programs['r_share'] = 0.0
     students['student_id'] = students['student_id'].astype(int)
@@ -501,14 +538,13 @@ def number_of_students_with_je(
         held_by_program[int(pid)] = [int(s) for s in sub['student_id'].tolist()]
 
     # ---------- per-program aggregates: counts, deficits, category stats ----------
-    from math import ceil
     program_info = {}  # pid -> dict with B,R,Db,Dr, targets, cat_counts, cat_worst
 
     for pid in programs.index:
         quota = int(programs.at[pid, 'quota'])
-        b_target = int(ceil(float(programs.at[pid, 'b_share']) * quota / 100.0))
-        r_target = int(ceil(float(programs.at[pid, 'r_share']) * quota / 100.0))
         held = held_by_program.get(int(pid), [])
+        b_target = target_count(programs.at[pid, 'b_share'], len(held))
+        r_target = target_count(programs.at[pid, 'r_share'], len(held))
 
         rset = r_set_by_program.get(int(pid), set())
         B = 0
@@ -551,6 +587,8 @@ def number_of_students_with_je(
         info = program_info.get(f2)
         if info is None:
             return False
+        if s1 not in info['pos_map']:
+            return False  # the program must find the candidate acceptable
         cat_count = info['cat_count']
         if (cat_count[(0,0)] + cat_count[(1,0)] + cat_count[(0,1)] + cat_count[(1,1)]) == 0:
             return False  # no s2 at f2 to swap with
@@ -588,7 +626,7 @@ def number_of_students_with_je(
     seen = set()
 
     all_students = set(students.index) | set(prefs['student_id'].tolist()) | set(matching['student_id'].tolist())
-    stu_b = set(students[students['b_trait'] == 1]['student_id']) # list of all scholarship holders
+    stu_b = {sid for sid, value in b_map.items() if value} # list of all scholarship holders
     for s1 in all_students:
         if s1 in seen:
             continue
@@ -618,7 +656,7 @@ def number_of_students_with_je(
 
     return (counted, counted_b)
 
-# ======================================== b and r compliance avgs =================================
+# ====================== Final-enrollment target fulfillment ======================
 
 def avg_traits_compl(
     matching: pd.DataFrame,
@@ -627,61 +665,40 @@ def avg_traits_compl(
     residents: pd.DataFrame,
 ) -> tuple[float, float, float, float]:
 
-    matching = matching.copy()
-    programs = programs.copy()
-    students = students.copy()
-    residents = residents.copy()
+    """Mean capped fulfillment and filled positions at final enrollment.
 
-    programs.set_index('program_id', inplace=True, drop=False)
-    students.set_index('student_id', inplace=True, drop=False)
-
-    b_map: Dict[int, int] = students['b_trait'].to_dict()
-    r_set_by_program: Dict[int, Set[int]] = {}
-    for pid, sub in residents.groupby('program_id', sort=False):
-        r_set_by_program[int(pid)] = set(int(s) for s in sub['student_id'].tolist())
-
-    held_by_program: Dict[int, List[int]] = {}
-    for pid, sub in matching.groupby('program_id', sort=False):
-        held_by_program[int(pid)] = [int(s) for s in sub['student_id'].tolist()]
-
-    from math import ceil
-
-    sum_b = 0.0
-    cnt_b = 0
-    sum_r = 0.0
-    cnt_r = 0
-
-    sum_b_total = 0
-    sum_r_total = 0
-
-    for pid in programs.index:
-        quota = int(programs.at[pid, 'quota'])
-        b_share = float(programs.at[pid, 'b_share'])
-        r_share = float(programs.at[pid, 'r_share'])
-        b_target = int(ceil(b_share * quota / 100.0)) if b_share > 0 else 0
-        r_target = int(ceil(r_share * quota / 100.0)) if r_share > 0 else 0
-
-        held = held_by_program.get(int(pid), [])
-        rset = r_set_by_program.get(int(pid), set())
-
-        B = sum(1 for s in held if b_map.get(s, 0))
-        R = sum(1 for s in held if s in rset)
-
-        if b_target > 0:
-            val_b = min(1.0, B / b_target)
-            sum_b += val_b
-            cnt_b += 1
-            val_b_total = min(B,b_target) # number of filled b target seats
-            sum_b_total += val_b_total
-
-        if r_target > 0:
-            val_r = min(1.0, R / r_target)
-            sum_r += val_r
-            cnt_r += 1
-            val_r_total = min(R,r_target) # number of filled r target seats
-            sum_r_total += val_r_total
-
-    avg_b = (sum_b / cnt_b) if cnt_b > 0 else float('nan')
-    avg_r = (sum_r / cnt_r) if cnt_r > 0 else float('nan')
-
-    return (avg_b, avg_r, sum_b_total, sum_r_total)
+    Return (mean_b, mean_r, filled_b_positions, filled_r_positions). The b
+    mean covers positive scholarship targets; the r mean covers programs
+    with both positive targets. Programs with a positive policy share and
+    zero enrollment remain in the mean with fulfillment 1 (zero threshold).
+    Means are unweighted fractions in [0, 1], matching the paper's equation.
+    """
+    programs = programs.copy().set_index('program_id', drop=False)
+    students = students.copy().set_index('student_id', drop=False)
+    for col in ('b_share', 'r_share'):
+        if col not in programs:
+            programs[col] = 0.0
+        programs[col] = programs[col].fillna(0.0)
+    b_map = students['b_trait'].to_dict() if 'b_trait' in students else {}
+    r_sets = {int(pid): set(sub['student_id'])
+              for pid, sub in residents.groupby('program_id', sort=False)}
+    cohorts = {int(pid): list(sub['student_id'])
+               for pid, sub in matching.groupby('program_id', sort=False)}
+    b_values, r_values = [], []
+    filled_b = filled_r = 0
+    for row in programs.itertuples(index=False):
+        held = cohorts.get(int(row.program_id), [])
+        b_target = target_count(row.b_share, len(held))
+        r_target = target_count(row.r_share, len(held))
+        B = sum(bool(b_map.get(sid, 0)) for sid in held)
+        rset = r_sets.get(int(row.program_id), set())
+        R = sum(sid in rset for sid in held)
+        if row.b_share > 0:
+            filled_b += min(B, b_target)
+            b_values.append(min(B, b_target) / b_target if b_target else 1.0)
+        if row.b_share > 0 and row.r_share > 0:
+            filled_r += min(R, r_target)
+            r_values.append(min(R, r_target) / r_target if r_target else 1.0)
+    return (sum(b_values) / len(b_values) if b_values else float('nan'),
+            sum(r_values) / len(r_values) if r_values else float('nan'),
+            filled_b, filled_r)

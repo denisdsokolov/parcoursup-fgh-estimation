@@ -1,9 +1,9 @@
-# Stable choice with overlapping constraints: Parcoursup replication code
+# Stable choice with overlapping targets: Parcoursup replication code
 
 [![CI](https://github.com/denisdsokolov/parcoursup-fgh-estimation/actions/workflows/ci.yml/badge.svg)](https://github.com/denisdsokolov/parcoursup-fgh-estimation/actions/workflows/ci.yml)
 
-Research code accompanying Denis Sokolov, *Stable Choice with Overlapping Distributional
-Constraints: An Anchor Characterization and an Application to Parcoursup*. It estimates
+Research code accompanying Denis Sokolov, *Stable Choice with Overlapping Targets:
+Theory and Evidence from French College Admissions*. It estimates
 applicant preferences from restricted Parcoursup records and compares the current fixed
 call-order mechanism (PCS) with Stage-Fair College-Proposing Deferred Acceptance (SF-CDA).
 
@@ -14,11 +14,20 @@ the highest-priority stable anchor, `k_left`, on the residual newcomer problem a
 
 ## Main empirical result
 
-In 1,000 paired simulations on the 2024 market, SF-CDA reduces the number of candidates with
-justified envy from 174,801 under PCS to 1,028 on average. Scholarship-target compliance rises
-from 68.21% to 87.84%, while total assignments change from 510,722 to 510,994. These are
-model-based policy comparisons, not causal estimates. The manuscript values for 2022–2024 are
-in [`results/paper/mechanism_comparison.csv`](results/paper/mechanism_comparison.csv).
+In 1,000 paired 2024 simulations, SF-CDA matches **9,796 additional scholarship holders**:
+100,329 versus 90,533 under PCS, an increase of **10.8%**. Total assignments rise by only
+272 (510,994 versus 510,722). Among scholarship holders, 22,037 prefer SF-CDA's assignment
+and 2,903 prefer PCS. Justified envy falls from 174,801 candidates to 1,028 on average.
+Mean scholarship-target fulfillment rises from 68.21% to 87.84%, measured relative to each
+program's **final enrollment**. These are model-based comparisons conditional on estimated
+preferences. The manuscript values for 2022–2024 are in
+[`results/paper/mechanism_comparison.csv`](results/paper/mechanism_comparison.csv).
+
+SF-CDA is defined by percentage shares of its attainable stage cohort. Non-wastefulness makes
+its integer-threshold implementation exactly equivalent stage by stage, including proposals
+and rejections. All programs choose before candidates respond. The empirical model treats
+boarding programs as regular admission programs. See [`docs/TARGETS.md`](docs/TARGETS.md)
+for formulas, rounding, fairness checks, and the scope of the implementation.
 
 Read [`docs/PAPER.md`](docs/PAPER.md) for the paper summary and
 [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) for the claim-by-claim code audit.
@@ -29,8 +38,9 @@ Read [`docs/PAPER.md`](docs/PAPER.md) for the paper summary and
 - `panel_builder.py`, `estimate_fgh.py`, `alpha_ols.py` — eligibility set, multinomial-logit
   estimation, and alternative-specific-constant imputation.
 - `simulate_rols.py`, `pref_profile_sampling.py` — simulated preference profiles.
-- `cda_mechanisms.py` — PCS, SF-CDA, target compliance, and justified-envy calculations.
-- `paper_reporting.py` — paired means, Monte Carlo standard errors, and significance tests.
+- `cda_mechanisms.py` — PCS, SF-CDA, final-enrollment target fulfillment, and justified-envy calculations.
+- `percentage_targets.py` — integer thresholds induced by declared percentage shares.
+- `paper_reporting.py` — paired means and across-simulation standard deviations, as in the paper.
 - `FGH_main.py` — end-to-end orchestration; its paper default is 1,000 markets.
 - `results/paper/` — manuscript values transcribed from the paper.
 - `results/simulations/` — retained development-run aggregates, not exact table replications.
@@ -78,9 +88,17 @@ the sampled program IDs, and the estimated `alpha_hat.csv` and `beta_hat.csv`; t
 published here. With identical inputs and seed, each simulated preference draw is shared by
 PCS and SF-CDA.
 
+For 2022 or 2023, set `PARCOURSUP_YEAR=22` or `23` and point `PARCOURSUP_DATA_DIR` to that year's
+processed tables and original coefficients. Without overrides, the run uses 100 paired markets
+for those years; `PARCOURSUP_RESULT_YEAR` and the seed follow the selected year. Explicit bunch
+settings in your environment take precedence. The included estimator is the 2024 baseline;
+other years use their saved annual coefficients. `PARCOURSUP_USE_ROLS=true` uses seeded draws
+from the cached profile pool, whereas the default generates fresh profiles.
+
 ## Tests
 
-The tests use synthetic data, including Example 2 from the paper:
+The tests use synthetic data, including the worked anchor example, both PCS counterexamples,
+independent exhaustive exchange checks, and complete-history equivalence checks:
 
 ```bash
 python -m pip install -r requirements-dev.txt

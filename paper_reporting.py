@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from math import sqrt
-
 import pandas as pd
-from scipy.stats import ttest_1samp
 
 
 METRICS = (
-    ("avg_b_compliance_pct", "PCS_avg_b", "SF_avg_b", 100.0),
-    ("avg_r_compliance_pct", "PCS_avg_r", "SF_avg_r", 100.0),
-    ("filled_b_target_seats", "PCS_total_b", "SF_total_b", 1.0),
-    ("filled_r_target_seats", "PCS_total_r", "SF_total_r", 1.0),
+    ("avg_b_target_fulfillment_pct", "PCS_avg_b", "SF_avg_b", 100.0),
+    ("avg_r_target_fulfillment_pct", "PCS_avg_r", "SF_avg_r", 100.0),
+    ("filled_b_target_positions", "PCS_total_b", "SF_total_b", 1.0),
+    ("filled_r_target_positions", "PCS_total_r", "SF_total_r", 1.0),
     ("candidates_with_justified_envy", "PCS_je_studs_amount", "SF_je_studs_amount", 1.0),
     ("scholarship_holders_with_justified_envy", "PCS_je_b_studs_amount", "SF_je_b_studs_amount", 1.0),
     ("matched_candidates", "PCS_matched_studs_amount", "SF_matched_studs_amount", 1.0),
@@ -29,25 +26,21 @@ METRICS = (
 )
 
 
-def _standard_error(values: pd.Series) -> float:
-    return float(values.std(ddof=1) / sqrt(len(values))) if len(values) > 1 else float("nan")
-
-
-def _stars(p_value: float) -> str:
-    if p_value < 0.001:
-        return "***"
-    if p_value < 0.01:
-        return "**"
-    if p_value < 0.05:
-        return "*"
-    return ""
+def first_filled_stage(filled_per_stage: list[int], fraction: float) -> int:
+    """First one-based stage attaining a fraction of eventual matches."""
+    if not filled_per_stage or not 0 < fraction <= 1:
+        raise ValueError("a nonempty stage history and a fraction in (0, 1] are required")
+    target = fraction * filled_per_stage[-1]
+    return next(k for k, count in enumerate(filled_per_stage, start=1) if count >= target)
 
 
 def summarize_paired_results(results: pd.DataFrame) -> pd.DataFrame:
-    """Summarize paired simulations as in Tables 5, D.9, and D.13.
+    """Summarize the main and supplemental mechanism-comparison tables.
 
-    Standard errors condition on the estimated utility parameters. Difference
-    statistics use the paired draw-level difference ``SF-CDA - PCS``.
+    Parentheses in the paper are across-simulation standard deviations,
+    conditional on the estimated utility parameters. Difference statistics
+    use the paired draw-level difference ``SF-CDA - PCS``. These are not
+    standard errors of the estimated means or preference-parameter errors.
     """
     rows = []
     for metric, pcs_column, sf_column, scale in METRICS:
@@ -59,19 +52,16 @@ def summarize_paired_results(results: pd.DataFrame) -> pd.DataFrame:
         pcs = paired[pcs_column]
         sf = paired[sf_column]
         difference = sf - pcs
-        p_value = float(ttest_1samp(difference, popmean=0).pvalue) if len(difference) > 1 else float("nan")
         rows.append(
             {
                 "metric": metric,
                 "simulations": len(paired),
                 "pcs_mean": float(pcs.mean()),
-                "pcs_se": _standard_error(pcs),
+                "pcs_sd": float(pcs.std(ddof=1)),
                 "sf_cda_mean": float(sf.mean()),
-                "sf_cda_se": _standard_error(sf),
+                "sf_cda_sd": float(sf.std(ddof=1)),
                 "difference_mean": float(difference.mean()),
-                "difference_se": _standard_error(difference),
-                "p_value": p_value,
-                "significance": _stars(p_value),
+                "difference_sd": float(difference.std(ddof=1)),
             }
         )
     return pd.DataFrame(rows)
