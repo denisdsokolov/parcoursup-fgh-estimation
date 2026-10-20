@@ -44,3 +44,11 @@ cannot be reconstructed from the public aggregate outputs alone.
 Only aggregate simulation tables, aggregate residency histograms, and rendered figures are
 kept under `results/`. Before publishing new results, verify that no row can identify an
 individual candidate.
+
+## Target and reporting conventions
+
+`b_share` and `r_share` store percentages in [0,100]; `quota` is seat capacity. The cohort size
+used for a target is derived at the proposal stage or from the final matching, rather than
+read as a policy parameter. See [TARGETS.md](TARGETS.md) for rounding and averaging populations.
+New `PaperSummary{year}.csv` files report across-simulation standard deviations in `*_sd` columns.
+The `se` values in the preference-coefficient table are estimation standard errors.

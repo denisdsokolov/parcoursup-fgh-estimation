@@ -10,7 +10,7 @@ version: 0.1.0
 date-released: 2026-08-10
 preferred-citation:
   type: article
-  title: "Stable Choice with Overlapping Distributional Constraints: An Anchor Characterization and an Application to Parcoursup"
+  title: "Stable Choice with Overlapping Targets: Theory and Evidence from French College Admissions"
   authors:
     - family-names: Sokolov
       given-names: Denis
